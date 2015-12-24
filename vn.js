@@ -1,5 +1,6 @@
 (function () {
     var _slice = Array.prototype.slice,
+        _concat = Array.prototype.concat,
         _toString = Object.prototype.toString;
 
     function _isType(type) {
@@ -20,23 +21,33 @@
         }, 0);
     }
 
+    function _initArray(len, value) {
+        var res = [];
+
+        while (--len >= 0) {
+            res[len] = value;
+        }
+
+        return res;
+    }
+
     function Node() {
-        this.status = Node.UNINIT; // 1: no subscribe 2: working 3: end 4: error
+        this.status = Node.UNINIT; // 1: no subscribe 2: active 3: end
         this.subscribs = [];
     }
 
     Node.UNINIT = 1;
-    Node.WORKING = 2;
+    Node.ACTIVE = 2;
     Node.END = 3;
-    Node.ERROR = 4;
 
     Node.NOMORE = '||No More||';
+    Node.NOVALUE = '||No Value||';
 
     Node.stream = function(fn) {
         var node = new Node(),
             unbind;
 
-        node.on('working', function () {
+        node.on('active', function () {
             unbind = fn(function (signal) {
                 node.async(signal);
             });
@@ -51,13 +62,13 @@
         return node;
     };
 
-    Node.bind = function (node, event, filter) {
+    Node.bind = function (node, event, map) {
         return Node.stream(function (sink) {
             var fn;
 
-            if (filter) {
+            if (map) {
                 fn = function (event) {
-                    sink(_isFunction(filter) ? filter(event) : filter);
+                    sink(_isFunction(map) ? map(event) : map);
                 };
             } else {
                 fn = sink;
@@ -81,7 +92,7 @@
     };
 
     proto.send = function (value) {
-        if (this.status !== Node.WORKING) {
+        if (this.status !== Node.ACTIVE) {
             return;
         }
 
@@ -92,7 +103,9 @@
     };
 
     proto.error = function (error) {
-        this.status = Node.ERROR;
+        if (this.status !== Node.ACTIVE) {
+            return;
+        }
 
         this.lastError = error;
         this.fire('error', error);
@@ -114,18 +127,20 @@
                 self.error(error);
             });
         } else {
-            if (signal === Node.NOMORE) {
-                this.end();
-            } else if (_isError(signal)) {
+            if (_isError(signal)) {
                 this.error(signal);
             } else {
-                this.send(signal);
+                if (signal === Node.NOMORE) {
+                    this.end();
+                } else {
+                    this.send(signal);
+                }
             }
         }
     };
 
     proto.on = function (event, fn, context) {
-        if (event === 'error' && this.status === Node.ERROR) {
+        if (event === 'error' && this.status === Node.END) {
             fn.call(context || this, this.lastError);
         } else if (event === 'send' && this.status === Node.END) {
             fn.call(context || this, this.lastValue);
@@ -138,8 +153,8 @@
         });
 
         if (event === 'send' && this.status === Node.UNINIT) {
-            this.status = Node.WORKING;
-            this.fire('working');
+            this.status = Node.ACTIVE;
+            this.fire('active');
         }
 
         return this;
@@ -209,6 +224,111 @@
         return node;
     };
 
+    proto.sample = function (other) {
+        var node = new Node(),
+            curr = Node.NOVALUE;
+
+        this.on('send', function (value) {
+            curr = value;
+        });
+
+        other.on('send', function () {
+            if (curr !== Node.NOVALUE) {
+                node.async(curr);
+            }
+        });
+
+        return node;
+    };
+
+    proto.merge = function () {
+        var node = new Node(),
+            others = _slice.call(arguments, 0),
+            inputs = _concat.call.concat(others, this),
+            count = inputs.length;
+
+        function onSend(value) {
+            if (value === Node.NOMORE) {
+                if (--count === 0) {
+                    node.end();
+                }
+                return;
+            }
+                
+            node.async(value);
+        }
+
+        function onError(error) {
+            node.error(error);
+        }
+
+        inputs.forEach(function (input) {
+            input.on('send', onSend);
+            input.on('error', onError);
+        });
+
+        return node;
+    };
+
+    proto.zip = function () {
+        var node = new Node(),
+            others = _slice.call(arguments, 0),
+            inputs = _concat.call.concat(others, this),
+            count = inputs.length,
+            buffers = _initArray(count, []);
+
+        function onSend(value, index) {
+            var res = [],
+                full = true,
+                i,
+                len = buffers.length;
+
+            if (value === Node.NOMORE) {
+                if (--count === 0) {
+                    node.end();
+                }
+                return;
+            }
+
+            buffers[index].push(value);
+
+            i = -1;
+
+            while (++i < len) {
+                if (!buffers[i].length) {
+                    full = false;
+                    break;
+                }
+            }
+
+            if (!full) {
+                return;
+            }
+
+            i = -1;
+
+            while (++i < len) {
+                res[i] = buffers[i].shift();
+            }
+
+            node.async(Promise.all(res));
+        }
+
+        function onError(error) {
+            node.error(error);
+        }
+
+        inputs.forEach(function (input, index) {
+            input.on('send', function (value) {
+                onSend(value, index)
+            });
+
+            input.on('error', onError);
+        });
+
+        return node;
+    };
+
     proto.done = function (fn) {
         return this.on('send', fn);
     };
@@ -217,7 +337,7 @@
         return this.on('error', fn);
     };
 
-    ['map', 'reduce', 'filter'].forEach(function (method) {
+    ['map', 'reduce', 'filter', 'sample'].forEach(function (method) {
         var fn = proto[method];
 
         proto[method] = function () {
