@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="urf-8">
+    <title>Q</title>
+    <style type="text/css">
+        * {
+            margin: 0;
+            padding: 0;
+        }
+        a {
+            color: inherit;
+            font: inherit;
+            text-decoration: inherit;
+        }
+        body {
+            color: #333;
+            font-family: "Microsoft Yahei";
+            font-size: 15px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px;
+            border: 1px solid #eee;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <p><a class="btn" href="data.json">show</a></p>
+    <ul class="list"></ul>
+
+    <script type="text/javascript" src="vn.js"></script>
+    <script type="text/javascript">
+        function $(selector) {
+            return [].slice.call(document.querySelectorAll(selector), 0);
+        }
+
+        function get(url) {
+            var xhr = new XMLHttpRequest(),
+                pm;
+            
+            pm = new Promise(function (resolve, reject) {
+                xhr.onreadystatechange = function () {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            resolve(JSON.parse(xhr.responseText));
+                        } else {
+                            reject(new Error('response: ' + xhr.status));
+                        }
+                    }
+                };
+
+                xhr.open('GET', url, true);
+                xhr.send();
+            });
+
+            return pm;
+        }
+
+        function tmpl(template, data) {
+            return template.replace(/\{([^\}]+)\}/g, function (match, key) {
+                return data[key] || '';
+            });
+        }
+
+        var btn = $('.btn')[0],
+            list = $('.list')[0],
+            page = 0;
+
+        function click(event) {
+            event.preventDefault();
+            return event.target.href;
+        }
+
+        function fetch(url) {
+            return get(url + '?p=' + page++);
+        }
+
+        function validate(data) {
+            return data.length;
+        }
+
+        function append(list, data) {
+            return list.concat(data);
+        }
+
+        function render(data) {
+            var html = '',
+                i = -1,
+                len = data.length;
+
+            while (++i < len) {
+                html += tmpl('<li>{value}</li>', {value: data[i]});
+            }
+
+            list.innerHTML = html;
+        }
+
+        function error(error) {
+            console.log(error);
+        }
+
+        vn
+        .bind(btn, 'click', click) // 绑定事件
+        .map(fetch)                // 加载数据
+        .filter(validate)          // 数据校验
+        .reduce(append)            // 合并数据
+        .done(render)              // 渲染
+        .fail(error);              // 异常处理
+    </script>
+</body>
+</html>
