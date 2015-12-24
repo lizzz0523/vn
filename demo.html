@@ -2,7 +2,8 @@
 <html>
 <head>
     <meta charset="urf-8">
-    <title>Q</title>
+    <title>vn: data stream controll</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
     <style type="text/css">
         * {
             margin: 0;
@@ -24,10 +25,13 @@
             border: 1px solid #eee;
             border-radius: 3px;
         }
+        .list li {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
     </style>
 </head>
 <body>
-    <p><a class="btn" href="data.json">show</a></p>
     <ul class="list"></ul>
 
     <script type="text/javascript" src="vn.js"></script>
@@ -64,17 +68,31 @@
             });
         }
 
-        var btn = $('.btn')[0],
+        var root = document.documentElement,
+            body = document.body,
             list = $('.list')[0],
             page = 0;
 
-        function click(event) {
-            event.preventDefault();
-            return event.target.href;
+        function scroll(sink) {
+            window.onscroll = function (event) {
+                if (body.scrollTop > body.clientHeight - root.clientHeight - 100) {
+                    if (page < 10) {
+                        sink(page++);
+                    } else {
+                        sink(vn.NOMORE);
+                    }
+                }
+            };
+
+            sink(page++);
+
+            return function () {
+                window.onscroll = null;
+            }
         }
 
-        function fetch(url) {
-            return get(url + '?p=' + page++);
+        function fetch(page) {
+            return get('data.json?p=' + page);
         }
 
         function validate(data) {
@@ -101,13 +119,14 @@
             console.log(error);
         }
 
+        // 主流程
         vn
-        .bind(btn, 'click', click) // 绑定事件
-        .map(fetch)                // 加载数据
-        .filter(validate)          // 数据校验
-        .reduce(append)            // 合并数据
-        .done(render)              // 渲染
-        .fail(error);              // 异常处理
+        .stream(scroll)   // 绑定事件
+        .map(fetch)       // 加载数据
+        .filter(validate) // 数据校验
+        .reduce(append)   // 合并数据
+        .done(render)     // 模版渲染
+        .fail(error);     // 异常处理
     </script>
 </body>
 </html>
