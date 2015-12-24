@@ -44,7 +44,7 @@
 
         node.on('end', function () {
             _nextTick(function () {
-                unbind();
+                unbind && unbind();
             });
         });
 
@@ -122,7 +122,7 @@
                 this.send(signal);
             }
         }
-    }
+    };
 
     proto.on = function (event, fn, context) {
         if (event === 'error' && this.status === Node.ERROR) {
