@@ -278,8 +278,7 @@
             buffers = _initArray(count, []);
 
         function onSend(value, index) {
-            var res = [],
-                full = true,
+            var values = [],
                 i,
                 len = buffers.length;
 
@@ -296,22 +295,17 @@
 
             while (++i < len) {
                 if (!buffers[i].length) {
-                    full = false;
-                    break;
+                    return;
                 }
-            }
-
-            if (!full) {
-                return;
             }
 
             i = -1;
 
             while (++i < len) {
-                res[i] = buffers[i].shift();
+                values[i] = buffers[i].shift();
             }
 
-            node.async(Promise.all(res));
+            node.async(Promise.all(values));
         }
 
         function onError(error) {
