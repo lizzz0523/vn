@@ -224,7 +224,22 @@
         return node;
     };
 
-    proto.sample = function (other) {
+    proto.delay = function (wait) {
+        var node = new Node(),
+            buffer = [];
+
+        this.on('send', function (value) {
+            buffer.push(value);
+
+            setTimeout(function () {
+                node.async(buffer.shift());
+            }, wait);
+        });
+
+        return node;
+    };
+
+    proto.sample = function (bump) {
         var node = new Node(),
             curr = Node.NOVALUE;
 
@@ -232,7 +247,7 @@
             curr = value;
         });
 
-        other.on('send', function () {
+        bump.on('send', function () {
             if (curr !== Node.NOVALUE) {
                 node.async(curr);
             }
@@ -331,7 +346,7 @@
         return this.on('error', fn);
     };
 
-    ['map', 'reduce', 'filter', 'sample'].forEach(function (method) {
+    ['map', 'reduce', 'filter', 'delay', 'sample'].forEach(function (method) {
         var fn = proto[method];
 
         proto[method] = function () {
