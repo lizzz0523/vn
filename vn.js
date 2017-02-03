@@ -31,9 +31,11 @@
         return res;
     }
 
-    function Node() {
-        this.status = Node.UNINIT; // 1: no subscribe 2: active 3: end
+    function Node(value) {
+        this.status = Node.UNINIT; // 1: no subscribe 2: at least one subscribe 3: end
         this.subscribs = [];
+        this.lastValue = value || Node.NOVALUE;
+        this.lastError = null;
     }
 
     Node.UNINIT = 1;
@@ -62,7 +64,7 @@
         return node;
     };
 
-    Node.bind = function (node, event, map) {
+    Node.bind = function (elem, event, map) {
         return Node.stream(function (sink) {
             var fn;
 
@@ -74,10 +76,31 @@
                 fn = sink;
             }
 
-            node.addEventListener(event, fn, false);
+            elem.addEventListener(event, fn, false);
 
             return function () {
-                node.removeEventListener(event, fn);
+                elem.removeEventListener(event, fn);
+            };
+        });
+    };
+
+    Node.interval = function (wait, map) {
+        return Node.stream(function (sink) {
+            var timer,
+                fn;
+
+            if (map) {
+                fn = function () {
+                    sink(_isFunction(map) ? map() : map);
+                };
+            } else {
+                fn = sink;
+            }
+
+            timer = setInterval(fn, wait);
+
+            return function () {
+                clearInterval(timer);
             };
         });
     };
@@ -241,16 +264,10 @@
 
     proto.sample = function (bump) {
         var node = new Node(),
-            curr = Node.NOVALUE;
-
-        this.on('send', function (value) {
-            curr = value;
-        });
+            self = this;
 
         bump.on('send', function () {
-            if (curr !== Node.NOVALUE) {
-                node.async(curr);
-            }
+            node.async(self.lastValue);
         });
 
         return node;
